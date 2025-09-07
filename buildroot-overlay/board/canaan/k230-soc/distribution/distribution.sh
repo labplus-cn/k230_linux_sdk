@@ -125,6 +125,8 @@ get_image_last_name()
 		canaan_site_name="EVB-K230";
     elif [ "${CONF}" = "k230_canmv_01studio_defconfig" ] ; then
 		canaan_site_name="CanMV-K230_01studio";
+    elif [ "${CONF}" = "k230_canmv_labplus_1956_defconfig" ] ; then
+		canaan_site_name="CanMV-K230_labplus_1956";
 	else
 		canaan_site_name="${CONF%%_defconfig}"	;
 	fi

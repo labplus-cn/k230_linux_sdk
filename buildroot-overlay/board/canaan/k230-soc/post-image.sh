@@ -37,6 +37,8 @@ gz_file_add_ver()
 		canaan_site_name="CanMV-K230_V3P0";
 	elif [ "${CONF}" = "k230d_canmv_defconfig" ] ; then
 		canaan_site_name="CanMV-K230D";
+	elif [ "${CONF}" = "k230_canmv_labplus_1956_defconfig" ] ; then
+		canaan_site_name="CanMV-K230_labplus_1956";
 	else
 		canaan_site_name="${CONF%%_defconfig}"	;
 	fi

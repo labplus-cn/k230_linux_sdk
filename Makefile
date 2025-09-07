@@ -74,6 +74,7 @@ list_def:
 	@echo "	k230d_canmv_defconfig                 --k230d canmv board"
 	@echo "	BPI-CanMV-K230D-Zero_ilp32_defconfig  --plct use,new 32 board,"
 	@echo "	k230_evb_defconfig                    --k230 evb board"
+	@echo "	k230_canmv_labplus_1956_defconfig     --labplus 1956 board"
 	@echo ""
 
 
