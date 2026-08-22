@@ -84,5 +84,8 @@ EOF
 }
 gen_version
 auto_boot_proc
+# USB CDC 虚拟串口 ttyGS0 登录终端
+grep -q "ttyGS0" ${rootfs_dir}/etc/inittab || \
+    echo "ttyGS0::respawn:/sbin/getty -L ttyGS0 115200 vt100 # USB CDC SERIAL" >> ${rootfs_dir}/etc/inittab
 [ -f "${STAGING_DIR}/lib/libasan.so.8" ] && cp "${STAGING_DIR}/lib/libasan.so.8" "${TARGET_DIR}/lib/"
 cd ${TARGET_DIR};rm -rf app ; ln -s root/app app; cd -;

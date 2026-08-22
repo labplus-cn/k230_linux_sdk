@@ -1,0 +1,11 @@
+#!/bin/sh
+# 开机自动配置 USB CDC 虚拟串口(ttyGS0), 登录终端由 inittab 中的 ttyGS0 getty 提供
+case "$1" in
+  start)
+    /bin/cdc_serial.sh start &
+    ;;
+  stop)
+    /bin/cdc_serial.sh stop
+    ;;
+esac
+exit 0
