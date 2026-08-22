@@ -27,6 +27,7 @@ endef
 
 define LVGL_INSTALL_TARGET_CMDS
 	$(TARGET_MAKE_ENV) $(MAKE) DESTDIR="$(TARGET_DIR)" -C $(@D) install
+	$(INSTALL) -m 0755 $(@D)/lvgl_demo_widgets $(TARGET_DIR)/usr/bin/lvgl_demo_widgets
 endef
 
 $(eval $(generic-package))
