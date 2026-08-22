@@ -102,6 +102,12 @@
 #define VVCAM_ISP_DEFAULT_SENSOR_XML    "/etc/vvcam/gc2093-1920x1080.xml"
 #define VVCAM_ISP_DEFAULT_SENSOR_MANU_JSON    "/etc/vvcam/gc2093-1920x1080_manual.json"
 #define VVCAM_ISP_DEFAULT_SENSOR_AUTO_JSON    "/etc/vvcam/gc2093-1920x1080_auto.json"
+#elif defined BR2_PACKAGE_VVCAM_DEF_SENSOR_BF3238
+#define VVCAM_ISP_DEFAULT_SENSOR        "bf3238"
+#define VVCAM_ISP_DEFAULT_SENSOR_MODE   0
+#define VVCAM_ISP_DEFAULT_SENSOR_XML    "/etc/vvcam/bf3238-1920x1080.xml"
+#define VVCAM_ISP_DEFAULT_SENSOR_MANU_JSON    "/etc/vvcam/bf3238-1920x1080_manual.json"
+#define VVCAM_ISP_DEFAULT_SENSOR_AUTO_JSON    "/etc/vvcam/bf3238-1920x1080_auto.json"
 #endif
 
 
