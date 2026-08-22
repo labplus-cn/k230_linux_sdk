@@ -1,0 +1,122 @@
+From: diskman88 <diskman88@163.com>
+Date: Sat, 22 Aug 2026 17:49:06 +0800
+Subject: [PATCH] k230: dts: add labplus 1956 lcd board dts
+
+New board dts for k230_canmv_labplus_1956_defconfig
+(BR2_LINUX_KERNEL_INTREE_DTS_NAME=canaan/k230-canmv-labplus-1956-lcd)
+
+---
+ arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts | 107 +++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 107 insertions(+)
+ create mode 100644 arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
+
+--- /dev/null
++++ b/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
+@@ -0,0 +1,107 @@
++// SPDX-License-Identifier: GPL-2.0 OR MIT
++/*
++ * Copyright (C) 2024 Yangyu Chen <cyy@cyyself.name>
++ */
++
++#include "k230.dtsi"
++#include "display-st7701-480x800.dtsi"
++
++/
++{
++	model = "Canaan CanMV-K230";
++	compatible = "canaan,canmv-k230", "canaan,kendryte-k230";
++
++	aliases {
++		serial3 = &uart3;
++		i2c0 = &i2c4;
++		i2c1 = &i2c3;
++		mmc0 = &mmc_sd0;
++		mmc1 = &mmc_sd1;
++	};
++
++	chosen {
++		stdout-path = "serial0:115200n8";
++	};
++
++	ddr: memory@0 {
++		device_type = "memory";
++		reg = <0x0 0x0 0x0 0x40000000>;
++	};
++
++	sound {
++		status                      = "okay";
++		compatible                  = "canaan,k230-audio-inno";
++		canaan,model                = "K230_I2S_INNO";
++		canaan,k230-i2s-controller  = <&i2s>;
++		canaan,k230-audio-codec     = <&inno_codec>;
++	};
++};
++
++&uart0 {
++	status = "okay";
++};
++&uart3 {
++	status = "okay";
++};
++&mmc_sd0{
++	status = "okay";
++	io_fixed_1v8;
++	rx_delay_line = <0x0d>;
++	tx_delay_line = <0x40>;
++};
++&mmc_sd1{
++	status = "okay";
++	no-1-8-v;
++	cap-sd-highspeed;
++	mshc_ctrl_r = <0x00>;
++};
++&usb0 {
++	status = "okay";
++};
++&usb1 {
++	dr_mode = "host";
++	status = "okay";
++};
++
++
++&i2c4
++{
++	status = "okay";
++};
++
++
++
++&vo {
++	vth_line = <10>;
++};
++&mipi0
++{
++	// set to csi2
++	id = <2>;
++	reg = <0x0 0x9000a800 0x0 0x800>;
++	interrupts = <121 IRQ_TYPE_LEVEL_HIGH>;
++	resets = <&sysctl_reset K230_RESET_CSI2_REG_OFFSET K230_RESET_CSI2_TYPE
++			  K230_RESET_CSI2_DONE_BIT K230_RESET_CSI2_ASSERT_BIT>,
++	<&sysctl_reset K230_RESET_M2_REG_OFFSET K230_RESET_M2_TYPE
++		 K230_RESET_M2_DONE_BIT K230_RESET_M2_ASSERT_BIT>;
++};
++
++&i2c3
++{
++	status = "okay";
++
++	touchscreen@38
++	{
++		compatible = "edt,edt-ft5306";
++		reg = <0x38>;
++		reset-gpios = <&gpio0_ports 22 GPIO_ACTIVE_LOW>;
++		interrupt-parent = <&gpio0_ports>;
++		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
++	};
++};
++
++&lcd
++{
++	// dsi_reset-gpios = <&gpio0_ports 24 GPIO_ACTIVE_HIGH>;
++	// backlight_gpio-gpios = <&gpio0_ports 25 GPIO_ACTIVE_HIGH>;
++};
