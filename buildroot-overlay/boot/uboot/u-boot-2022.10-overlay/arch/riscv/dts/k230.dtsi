@@ -209,7 +209,7 @@
 		usbotg0: usb-otg@91500000 {
 			compatible = "snps,dwc2";
 			reg = <0x0 0x91500000 0x0 0x10000>;
-			g-tx-fifo-size = <128 128 128 128 128 128>;
+			g-tx-fifo-size = <166 166 166 166 166 166 166 166 166 166>;
 			dr_mode = "otg";
 			otg-rev = <0x200>;
 #ifndef CONFIG_CMD_DFU
@@ -220,7 +220,7 @@
 		usbotg1: usb-otg@91540000 {
 			compatible = "snps,dwc2";
 			reg = <0x0 0x91540000 0x0 0x10000>;
-			g-tx-fifo-size = <128 128 128 128 128 128>;
+			g-tx-fifo-size = <166 166 166 166 166 166 166 166 166 166>;
 			dr_mode = "otg";
 			otg-rev = <0x200>;
 			status = "disabled";
