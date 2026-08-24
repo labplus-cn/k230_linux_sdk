@@ -109,9 +109,9 @@ static int write_reg(struct gc2053_ctx* ctx, uint16_t addr, uint8_t value) {
 static int open_i2c(struct gc2053_ctx* sensor) {
     // i2c
     if (sensor->i2c < 0) {
-        sensor->i2c = open("/dev/i2c-0", O_RDWR);
+        sensor->i2c = open("/dev/i2c-4", O_RDWR);
         if (sensor->i2c < 0) {
-            perror("open /dev/i2c-0");
+            perror("open /dev/i2c-4");
             return -1;
         }
         if (ioctl(sensor->i2c, I2C_SLAVE_FORCE, I2C_SLAVE_ADDRESS) < 0) {

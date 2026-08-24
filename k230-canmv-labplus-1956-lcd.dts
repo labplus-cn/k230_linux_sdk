@@ -6,15 +6,14 @@
 #include "k230.dtsi"
 #include "display-st7701-480x800.dtsi"
 
-/
-{
+/ {
 	model = "Canaan CanMV-K230";
 	compatible = "canaan,canmv-k230", "canaan,kendryte-k230";
 
 	aliases {
 		serial3 = &uart3;
-		i2c0 = &i2c4;
-		i2c1 = &i2c3;
+		i2c3 = &i2c3;   /* /dev/i2c-3 = 控制器 i2c3 (触摸) */
+		i2c4 = &i2c4;   /* /dev/i2c-4 = 控制器 i2c4 (板载传感器) */
 		mmc0 = &mmc_sd0;
 		mmc1 = &mmc_sd1;
 	};
@@ -56,6 +55,7 @@
 	mshc_ctrl_r = <0x00>;
 };
 &usb0 {
+	dr_mode = "peripheral";
 	status = "okay";
 };
 &usb1 {
@@ -89,12 +89,15 @@
 &i2c3
 {
 	status = "okay";
+	// CHSC6540 触摸 IC, 7位地址 0x2e (非 FT5406 的 0x38)
+	// 400kHz 下 FPC 走线振铃致 DW 控制器 lost arbitration, 降至 100kHz
+	clock-frequency = <100000>;
 
-	touchscreen@38
+	touchscreen@2e
 	{
-		compatible = "edt,edt-ft5306";
-		reg = <0x38>;
-		reset-gpios = <&gpio0_ports 22 GPIO_ACTIVE_LOW>;
+		compatible = "edt,edt-ft5406";
+		reg = <0x2e>;
+		reset-gpios = <&gpio0_ports 24 GPIO_ACTIVE_HIGH>;
 		interrupt-parent = <&gpio0_ports>;
 		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
 	};

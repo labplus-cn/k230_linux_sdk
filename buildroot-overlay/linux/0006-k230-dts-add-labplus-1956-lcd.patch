@@ -6,13 +6,13 @@ New board dts for k230_canmv_labplus_1956_defconfig
 (BR2_LINUX_KERNEL_INTREE_DTS_NAME=canaan/k230-canmv-labplus-1956-lcd)
 
 ---
- arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts | 107 +++++++++++++++++++++++++++++++++++++++++
- 1 file changed, 107 insertions(+)
+ arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts | 113 ++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 113 insertions(+)
  create mode 100644 arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
 
 --- /dev/null
 +++ b/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,113 @@
 +// SPDX-License-Identifier: GPL-2.0 OR MIT
 +/*
 + * Copyright (C) 2024 Yangyu Chen <cyy@cyyself.name>
@@ -21,15 +21,14 @@ New board dts for k230_canmv_labplus_1956_defconfig
 +#include "k230.dtsi"
 +#include "display-st7701-480x800.dtsi"
 +
-+/
-+{
++/ {
 +	model = "Canaan CanMV-K230";
 +	compatible = "canaan,canmv-k230", "canaan,kendryte-k230";
 +
 +	aliases {
 +		serial3 = &uart3;
-+		i2c0 = &i2c4;
-+		i2c1 = &i2c3;
++		i2c3 = &i2c3;   /* /dev/i2c-3 = 控制器 i2c3 (触摸) */
++		i2c4 = &i2c4;   /* /dev/i2c-4 = 控制器 i2c4 (板载传感器) */
 +		mmc0 = &mmc_sd0;
 +		mmc1 = &mmc_sd1;
 +	};
@@ -71,6 +70,10 @@ New board dts for k230_canmv_labplus_1956_defconfig
 +	mshc_ctrl_r = <0x00>;
 +};
 +&usb0 {
++	dr_mode = "peripheral";
++	g-rx-fifo-size = <512>;
++	g-np-tx-fifo-size = <64>;
++	g-tx-fifo-size = <512 512 512 64 64 64>;
 +	status = "okay";
 +};
 +&usb1 {
@@ -104,12 +107,15 @@ New board dts for k230_canmv_labplus_1956_defconfig
 +&i2c3
 +{
 +	status = "okay";
++	// CHSC6540 触摸 IC, 7位地址 0x2e (非 FT5406 的 0x38)
++	// 400kHz 下 FPC 走线振铃致 DW 控制器 lost arbitration, 降至 100kHz
++	clock-frequency = <100000>;
 +
-+	touchscreen@38
++	touchscreen@2e
 +	{
-+		compatible = "edt,edt-ft5306";
-+		reg = <0x38>;
-+		reset-gpios = <&gpio0_ports 22 GPIO_ACTIVE_LOW>;
++		compatible = "edt,edt-ft5406";
++		reg = <0x2e>;
++		reset-gpios = <&gpio0_ports 24 GPIO_ACTIVE_HIGH>;
 +		interrupt-parent = <&gpio0_ports>;
 +		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
 +	};
