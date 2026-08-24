@@ -1,12 +1,46 @@
 #!/bin/sh
-bootddev=$(cat /proc/cmdline  | sed  -n  "s#root=\(\/dev\/mmcblk[0-9]\).*#\1#p" )
-
+# 自愈式首开机初始化:
+#   1. GPT 备份头修复: 镜像(1.2G)烧进更大 eMMC 后备份 GPT 错位, parted 必须先 Fix
+#   2. 创建 FAT32 数据分区 p3 (卷标 K230_DATA), 每次开机幂等自检, 缺了就补
+#   3. 首次开机写 fw_env.config (由 first_boot_flag 控制)
+#   4. 全新格式化时预置种子文件 (/data_seed -> /data), 不覆盖用户已有数据
+bootddev=$(sed -n \
+    's#.*root=\(/dev/mmcblk[0-9][0-9]*\)p[0-9][^ ]*.*#\1#p' \
+    /proc/cmdline)
 
 if [ -f /first_boot_flag ]; then
     echo "first boot flag"
     echo "${bootddev}   0x1e0000 0x10000" >/etc/fw_env.config
-	printf "fix\n" | parted ---pretend-input-tty ${bootddev} print  >/dev/null 2>&1
-    sd_size=$(parted ${bootddev} print | grep ${bootddev} | cut -d: -f2)
-    parted ${bootddev} resizepart 2 ${sd_size}; resize2fs ${bootddev}p2
     rm -rf /first_boot_flag
+fi
+
+# GPT 备份头错位修复 (fix 自动应答); 已修复时 parted 不提示, 无副作用
+printf "fix\n" | parted ---pretend-input-tty ${bootddev} print >/dev/null 2>&1
+
+# rootfs(p2)固定1024M, 将剩余空间(≈6.1G)划为 FAT32 数据分区 p3 (卷标 K230_DATA)
+# 1152MiB = rootfs 偏移 128MiB + 大小 1024MiB, 与 genimage.cfg 保持一致
+# 注意: 必须写 1152MiB! parted 的 "1152M" = 1152*10^6 字节(十进制), 会落在 p2 内部导致 mkpart 失败
+if ! parted -s ${bootddev} print 2>/dev/null | grep -q K230_DATA; then
+    echo "create data partition K230_DATA"
+    parted -s ${bootddev} mkpart K230_DATA fat32 1152MiB 100%
+    partprobe ${bootddev}
+    sleep 1
+fi
+
+# p3 存在但未格式化(或卷标不符)则补格式化, 幂等; 仅全新格式化时预置种子文件
+if [ -b ${bootddev}p3 ] && ! blkid ${bootddev}p3 2>/dev/null | grep -q K230_DATA; then
+    echo "format data partition K230_DATA"
+    # -F 32 必须显式: 避免 busybox mkdosfs 生成非标 FAT (Linux 能挂但 Windows 拒绝)
+    mkfs.vfat -F 32 -n K230_DATA ${bootddev}p3 2>/dev/null || \
+        mkdosfs -n K230_DATA ${bootddev}p3
+    # 预置种子文件: 构建 rootfs_overlay/data_seed/ 里的内容 (仅新格式化时拷入)
+    mkdir -p /data
+    if mount -t vfat -o iocharset=utf8,shortname=mixed ${bootddev}p3 /data 2>/dev/null; then
+        if [ -d /data_seed ] && [ "$(ls -A /data_seed 2>/dev/null)" ]; then
+            echo "seed files -> /data"
+            cp -r /data_seed/. /data/
+            sync
+        fi
+        umount /data
+    fi
 fi

@@ -1,0 +1,17 @@
+#!/bin/sh
+# data is exported as USB mass storage by default.
+# Use "S02data mount" only after ums.sh has ejected the USB medium.
+
+case "$1" in
+  mount|start)
+    [ "$1" = "start" ] && {
+        echo "data: kept unmounted for USB mass-storage export"
+        exit 0
+    }
+    /bin/ums.sh stop
+    ;;
+  stop)
+    /bin/ums.sh stop
+    ;;
+esac
+exit 0
