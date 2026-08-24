@@ -4,13 +4,14 @@
 # CPP=riscv64-unknown-linux-gnu-g++
 VO_INIT_DIR_NAME ?= vo_init
 VO_INIT_DEMO_DIR ?= ${shell pwd}
+VO_INIT_CXXFLAGS = -I$(STAGING_DIR)/usr/include/opencv4
 
 BIN = vo_init
 
 INCS+=-I./include -I$(STAGING_DIR)/usr/include -I$(STAGING_DIR)/usr/include/drm
 LIBPATH += -L$(STAGING_DIR)/usr/lib -L./
 
-LIBS += -ldisplay -lpthread
+LIBS += -ldisplay -lpthread 
 
 #LDFLAGS += -DSOCKLEN_T=socklen_t -DNO_SSTREAM=1 -D_LARGEFILE_SOURCE=1 -D_FILE_OFFSET_BITS=64 -DNO_OPENSSL=1
 
