@@ -70,6 +70,7 @@ LVGL_INSTALL_STAGING = YES
 
 LVGL_DEPENDENCIES += libevdev
 LVGL_EXTRA_DOWNLOADS = $(call github,lvgl,lv_port_linux,0a57deb47bada6916da2a1d103f31458ce933a6c.tar.gz)
+LVGL_CONF_ENV += SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 
 
 define LVGL_EXTRACT_CMDS
