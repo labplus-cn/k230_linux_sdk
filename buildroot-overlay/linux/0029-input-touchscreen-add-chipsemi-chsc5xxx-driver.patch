@@ -1,0 +1,396 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai>
+Date: Thu, 27 Aug 2026 12:00:00 +0800
+Subject: [PATCH] input: touchscreen: add ChipSemi CHSC5xxx support
+
+---
+ arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts |   2 +-
+ drivers/input/touchscreen/Kconfig                           |  11 ++
+ drivers/input/touchscreen/Makefile                          |   1 +
+ drivers/input/touchscreen/chct_touch.c                      | 327 +++++++++++++++++++++++++++++
+ 4 files changed, 340 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/input/touchscreen/chct_touch.c
+
+diff --git a/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts b/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
+index 6b82fd7e1..58f4d0f7d 100644
+--- a/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
++++ b/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
+@@ -116,7 +116,7 @@
+ 
+ 	touchscreen@2e
+ 	{
+-		compatible = "edt,edt-ft5306";
++		compatible = "chipsemi,chsc5432", "chipsemi,chsc_cap_touch";
+ 		reg = <0x2e>;
+ 		reset-gpios = <&gpio0_ports 24 GPIO_ACTIVE_LOW>;
+ 		interrupt-parent = <&gpio0_ports>;
+diff --git a/drivers/input/touchscreen/Kconfig b/drivers/input/touchscreen/Kconfig
+index 2db36e21a..34d74d0b4 100644
+--- a/drivers/input/touchscreen/Kconfig
++++ b/drivers/input/touchscreen/Kconfig
+@@ -152,6 +152,18 @@ config TOUCHSCREEN_CHIPONE_ICN8505
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called chipone_icn8505.
+ 
++config TOUCHSCREEN_CHCT_TOUCH
++	tristate "ChipSemi CHSC5xxx touchscreen support"
++	depends on I2C && OF
++	help
++	  Say Y here if you have a touchscreen using a ChipSemi
++	  CHSC5xxx family controller, such as the CHSC5432.
++
++	  The controller uses a 32-bit direct-address I2C protocol
++	  and reports up to five concurrent touch points.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called chct_touch.
+ config TOUCHSCREEN_CY8CTMA140
+ 	tristate "cy8ctma140 touchscreen"
+ 	depends on I2C
+diff --git a/drivers/input/touchscreen/Makefile b/drivers/input/touchscreen/Makefile
+index 5a2704a4c..4a1210204 100644
+--- a/drivers/input/touchscreen/Makefile
++++ b/drivers/input/touchscreen/Makefile
+@@ -16,6 +16,7 @@ obj-$(CONFIG_TOUCHSCREEN_AUO_PIXCIR)	+= auo-pixcir-ts.o
+ obj-$(CONFIG_TOUCHSCREEN_BU21013)	+= bu21013_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_BU21029)	+= bu21029_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_CHIPONE_ICN8318)	+= chipone_icn8318.o
++obj-$(CONFIG_TOUCHSCREEN_CHCT_TOUCH)	+= chct_touch.o
+ obj-$(CONFIG_TOUCHSCREEN_CHIPONE_ICN8505)	+= chipone_icn8505.o
+ obj-$(CONFIG_TOUCHSCREEN_CY8CTMA140)	+= cy8ctma140.o
+ obj-$(CONFIG_TOUCHSCREEN_CY8CTMG110)	+= cy8ctmg110_ts.o
+diff --git a/drivers/input/touchscreen/chct_touch.c b/drivers/input/touchscreen/chct_touch.c
+new file mode 100644
+index 000000000..7341e54e5
+--- /dev/null
++++ b/drivers/input/touchscreen/chct_touch.c
+@@ -0,0 +1,327 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * ChipSemi CHSC5xxx touchscreen driver
++ *
++ * The CHSC5xxx family uses a 32-bit direct-address I2C protocol.
++ * CHSC5432 based panels commonly expose touch data at 0x2000002c
++ * and the chip identifier at 0x20000080.
++ */
++
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/input/mt.h>
++#include <linux/input/touchscreen.h>
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/pm.h>
++
++#define CHCT_NAME			"chct_touch"
++#define CHCT_REG_TOUCH_DATA		0x2000002c
++#define CHCT_REG_CHIP_ID		0x20000080
++#define CHCT_TOUCH_DATA_LEN		28
++#define CHCT_CHIP_ID_LEN		4
++#define CHCT_MAX_TOUCHES		5
++#define CHCT_RESET_ASSERT_MS		20
++#define CHCT_RESET_RECOVERY_MS		50
++
++enum chct_addr_order {
++	CHCT_ADDR_ORDER_BE = 0,
++	CHCT_ADDR_ORDER_LE,
++};
++
++struct chct_touch {
++	struct i2c_client *client;
++	struct input_dev *input;
++	struct touchscreen_properties prop;
++	struct gpio_desc *reset_gpio;
++	struct mutex xfer_lock;
++	enum chct_addr_order addr_order;
++};
++
++static void chct_encode_addr(u32 reg, u8 *buf, enum chct_addr_order order)
++{
++	if (order == CHCT_ADDR_ORDER_BE) {
++		buf[0] = reg >> 24;
++		buf[1] = reg >> 16;
++		buf[2] = reg >> 8;
++		buf[3] = reg;
++	} else {
++		buf[0] = reg;
++		buf[1] = reg >> 8;
++		buf[2] = reg >> 16;
++		buf[3] = reg >> 24;
++	}
++}
++
++static int chct_read_block(struct chct_touch *ts, u32 reg, void *data,
++			   size_t len, enum chct_addr_order order)
++{
++	struct i2c_msg msgs[2];
++	u8 addr[4];
++	int error;
++
++	chct_encode_addr(reg, addr, order);
++
++	msgs[0].addr = ts->client->addr;
++	msgs[0].flags = 0;
++	msgs[0].len = sizeof(addr);
++	msgs[0].buf = addr;
++
++	msgs[1].addr = ts->client->addr;
++	msgs[1].flags = I2C_M_RD;
++	msgs[1].len = len;
++	msgs[1].buf = data;
++
++	error = i2c_transfer(ts->client->adapter, msgs, ARRAY_SIZE(msgs));
++	if (error != ARRAY_SIZE(msgs))
++		return error < 0 ? error : -EIO;
++
++	return 0;
++}
++
++static int chct_read(struct chct_touch *ts, u32 reg, void *data, size_t len)
++{
++	return chct_read_block(ts, reg, data, len, ts->addr_order);
++}
++
++static void chct_hw_reset(struct chct_touch *ts)
++{
++	if (!ts->reset_gpio)
++		return;
++
++	gpiod_set_value_cansleep(ts->reset_gpio, 1);
++	msleep(CHCT_RESET_ASSERT_MS);
++	gpiod_set_value_cansleep(ts->reset_gpio, 0);
++	msleep(CHCT_RESET_RECOVERY_MS);
++}
++
++static bool chct_id_valid(const u8 *chip_id)
++{
++	int i;
++	bool all_zero = true;
++	bool all_ff = true;
++
++	for (i = 0; i < CHCT_CHIP_ID_LEN; i++) {
++		all_zero &= chip_id[i] == 0x00;
++		all_ff &= chip_id[i] == 0xff;
++	}
++
++	return !all_zero && !all_ff;
++}
++
++static int chct_identify(struct chct_touch *ts)
++{
++	u8 chip_id[CHCT_CHIP_ID_LEN];
++	int error;
++
++	error = chct_read_block(ts, CHCT_REG_CHIP_ID, chip_id, sizeof(chip_id),
++				CHCT_ADDR_ORDER_BE);
++	if (!error && chct_id_valid(chip_id)) {
++		ts->addr_order = CHCT_ADDR_ORDER_BE;
++		dev_info(&ts->client->dev, "CHSC chip id %*ph\n",
++			 CHCT_CHIP_ID_LEN, chip_id);
++		return 0;
++	}
++
++	error = chct_read_block(ts, CHCT_REG_CHIP_ID, chip_id, sizeof(chip_id),
++				CHCT_ADDR_ORDER_LE);
++	if (!error && chct_id_valid(chip_id)) {
++		ts->addr_order = CHCT_ADDR_ORDER_LE;
++		dev_info(&ts->client->dev,
++			 "CHSC chip id %*ph (little-endian register addr)\n",
++			 CHCT_CHIP_ID_LEN, chip_id);
++		return 0;
++	}
++
++	if (!error) {
++		ts->addr_order = CHCT_ADDR_ORDER_BE;
++		dev_warn(&ts->client->dev,
++			 "unable to validate chip id, defaulting to big-endian register address order\n");
++		return 0;
++	}
++
++	return error;
++}
++
++static int chct_collect_touches(struct chct_touch *ts, u8 *buf,
++				struct input_mt_pos *pos)
++{
++	int contacts;
++	int i;
++
++	contacts = min_t(int, buf[1] & 0x0f, CHCT_MAX_TOUCHES);
++	for (i = 0; i < contacts; i++) {
++		unsigned int x;
++		unsigned int y;
++
++		x = ((buf[5 + i * 5] & 0x0f) << 8) | buf[2 + i * 5];
++		y = ((buf[5 + i * 5] & 0xf0) << 4) | buf[3 + i * 5];
++
++		touchscreen_set_mt_pos(&pos[i], &ts->prop, x, y);
++	}
++
++	return contacts;
++}
++
++static irqreturn_t chct_irq_thread(int irq, void *dev_id)
++{
++	struct chct_touch *ts = dev_id;
++	struct input_mt_pos pos[CHCT_MAX_TOUCHES];
++	int slots[CHCT_MAX_TOUCHES];
++	u8 buf[CHCT_TOUCH_DATA_LEN];
++	int contacts;
++	int error;
++	int i;
++
++	mutex_lock(&ts->xfer_lock);
++	error = chct_read(ts, CHCT_REG_TOUCH_DATA, buf, sizeof(buf));
++	mutex_unlock(&ts->xfer_lock);
++	if (error) {
++		dev_err_ratelimited(&ts->client->dev,
++				    "failed to read touch data: %d\n", error);
++		return IRQ_HANDLED;
++	}
++
++	contacts = chct_collect_touches(ts, buf, pos);
++	if (contacts > 0)
++		input_mt_assign_slots(ts->input, slots, pos, contacts, 0);
++
++	for (i = 0; i < contacts; i++) {
++		input_mt_slot(ts->input, slots[i]);
++		input_mt_report_slot_state(ts->input, MT_TOOL_FINGER, true);
++		input_report_abs(ts->input, ABS_MT_POSITION_X, pos[i].x);
++		input_report_abs(ts->input, ABS_MT_POSITION_Y, pos[i].y);
++	}
++
++	input_report_key(ts->input, BTN_TOUCH, contacts > 0);
++	input_mt_sync_frame(ts->input);
++	input_mt_report_pointer_emulation(ts->input, true);
++	input_sync(ts->input);
++
++	return IRQ_HANDLED;
++}
++
++static int __maybe_unused chct_suspend(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct chct_touch *ts = i2c_get_clientdata(client);
++
++	disable_irq(client->irq);
++	if (ts->reset_gpio)
++		gpiod_set_value_cansleep(ts->reset_gpio, 1);
++
++	return 0;
++}
++
++static int __maybe_unused chct_resume(struct device *dev)
++{
++	struct i2c_client *client = to_i2c_client(dev);
++	struct chct_touch *ts = i2c_get_clientdata(client);
++
++	chct_hw_reset(ts);
++	enable_irq(client->irq);
++
++	return 0;
++}
++
++static SIMPLE_DEV_PM_OPS(chct_pm_ops, chct_suspend, chct_resume);
++
++static int chct_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct chct_touch *ts;
++	struct input_dev *input;
++	int error;
++
++	if (!client->irq)
++		return dev_err_probe(dev, -EINVAL, "missing irq\n");
++
++	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C))
++		return dev_err_probe(dev, -EOPNOTSUPP,
++				     "I2C plain transfers not supported\n");
++
++	ts = devm_kzalloc(dev, sizeof(*ts), GFP_KERNEL);
++	if (!ts)
++		return -ENOMEM;
++
++	ts->client = client;
++	mutex_init(&ts->xfer_lock);
++
++	ts->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
++	if (IS_ERR(ts->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(ts->reset_gpio),
++				     "failed to get reset gpio\n");
++
++	chct_hw_reset(ts);
++
++	mutex_lock(&ts->xfer_lock);
++	error = chct_identify(ts);
++	mutex_unlock(&ts->xfer_lock);
++	if (error)
++		return dev_err_probe(dev, error, "failed to read chip id\n");
++
++	input = devm_input_allocate_device(dev);
++	if (!input)
++		return -ENOMEM;
++
++	input->name = "ChipSemi CHSC Touchscreen";
++	input->id.bustype = BUS_I2C;
++	input->dev.parent = dev;
++	input_set_capability(input, EV_KEY, BTN_TOUCH);
++	input_set_capability(input, EV_ABS, ABS_MT_POSITION_X);
++	input_set_capability(input, EV_ABS, ABS_MT_POSITION_Y);
++
++	touchscreen_parse_properties(input, true, &ts->prop);
++	if (!input_abs_get_max(input, ABS_MT_POSITION_X) ||
++	    !input_abs_get_max(input, ABS_MT_POSITION_Y))
++		return dev_err_probe(dev, -EINVAL,
++				     "touchscreen-size-x/y missing\n");
++
++	error = input_mt_init_slots(input, CHCT_MAX_TOUCHES,
++				    INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
++	if (error)
++		return error;
++
++	ts->input = input;
++	i2c_set_clientdata(client, ts);
++
++	error = devm_request_threaded_irq(dev, client->irq, NULL,
++					  chct_irq_thread, IRQF_ONESHOT,
++					  dev_name(dev), ts);
++	if (error)
++		return dev_err_probe(dev, error, "failed to request irq\n");
++
++	return input_register_device(input);
++}
++
++static const struct of_device_id chct_of_match[] = {
++	{ .compatible = "chipsemi,chsc5432" },
++	{ .compatible = "chipsemi,chsc_cap_touch" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, chct_of_match);
++
++static const struct i2c_device_id chct_i2c_id[] = {
++	{ CHCT_NAME, 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, chct_i2c_id);
++
++static struct i2c_driver chct_driver = {
++	.driver = {
++		.name = CHCT_NAME,
++		.of_match_table = chct_of_match,
++		.pm = pm_sleep_ptr(&chct_pm_ops),
++	},
++	.probe = chct_probe,
++	.id_table = chct_i2c_id,
++};
++module_i2c_driver(chct_driver);
++
++MODULE_AUTHOR("OpenAI");
++MODULE_DESCRIPTION("ChipSemi CHSC5xxx touchscreen driver");
++MODULE_LICENSE("GPL");
+-- 
+2.43.0

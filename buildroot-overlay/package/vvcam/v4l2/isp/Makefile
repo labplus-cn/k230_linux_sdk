@@ -3,6 +3,8 @@
 ifeq ($(BR2_PACKAGE_VVCAM_DEF_SENSOR), ov5647)
 ccflags-y += -DBR2_PACKAGE_VVCAM_DEF_SENSOR_OV5647
 #$(error "xccflags-y=$(ccflags-y)")
+else ifeq   ($(BR2_PACKAGE_VVCAM_DEF_SENSOR), bf3238)
+ccflags-y += -DBR2_PACKAGE_VVCAM_DEF_SENSOR_BF3238
 else ifeq   ($(BR2_PACKAGE_VVCAM_DEF_SENSOR), gc2093)
 ccflags-y += -DBR2_PACKAGE_VVCAM_DEF_SENSOR_GC2093
 else ifeq   ($(BR2_PACKAGE_VVCAM_DEF_SENSOR), gc2053)

@@ -1,0 +1,161 @@
+diff --git a/src/lib/display_backends/drm_k230_v4l2.c b/src/lib/display_backends/drm_k230_v4l2.c
+--- a/src/lib/display_backends/drm_k230_v4l2.c
++++ b/src/lib/display_backends/drm_k230_v4l2.c
+@@ -59,9 +59,26 @@
+ static char * backend_name = "DRM_V4L2_K230";
+ 
+ 
+-static  struct display * k230_display = NULL;
++static struct display * k230_display = NULL;
++static bool k230_display_owned = false;
+ static char k230_dispaly_v4l2_drm_run_flag = 0;
+-static unsigned int flush_data_fram_count=0;
++static unsigned int flush_data_fram_count = 0;
++
++static bool k230_use_v4l2_thread(void)
++{
++    return k230_display != NULL && k230_dispaly_v4l2_drm_run_flag;
++}
++
++static void k230_release_owned_display(void)
++{
++    if(!k230_display_owned || k230_display == NULL) {
++        return;
++    }
++
++    display_exit(k230_display);
++    k230_display = NULL;
++    k230_display_owned = false;
++}
+ 
+ /**********************
+  *      MACROS
+@@ -107,8 +124,15 @@
+ static lv_display_t * init_drm_k230(void)
+ {
+     if(k230_display == NULL) {
+-        LV_LOG_ERROR("k230_display is NULL — call init first");
+-        return NULL;
++        k230_display = display_init(0);
++        if(k230_display == NULL) {
++            LV_LOG_ERROR("display_init(0) failed for standalone K230 DRM backend");
++            return NULL;
++        }
++
++        k230_display_owned = true;
++        LV_LOG_INFO("Using standalone K230 DRM display: %ux%u",
++                    k230_display->width, k230_display->height);
+     }
+ 
+     /* Determine LVGL display and buffer dimensions based on rotation.
+@@ -137,6 +161,7 @@
+     struct display_plane * plane = display_get_plane(k230_display, fourcc);
+     if(plane == NULL) {
+         LV_LOG_ERROR("Failed to get OSD plane for fourcc 0x%x", fourcc);
++        k230_release_owned_display();
+         return NULL;
+     }
+ 
+@@ -146,6 +171,7 @@
+     drm_k230_data_t * data = malloc(sizeof(drm_k230_data_t));
+     if(data == NULL) {
+         LV_LOG_ERROR("Failed to allocate drm_k230_data");
++        k230_release_owned_display();
+         return NULL;
+     }
+     data->bufs[0] = display_allocate_buffer(plane, disp_w, disp_h);
+@@ -153,6 +179,7 @@
+     if(data->bufs[0] == NULL || data->bufs[1] == NULL) {
+         LV_LOG_ERROR("Failed to allocate OSD display buffers");
+         free(data);
++        k230_release_owned_display();
+         return NULL;
+     }
+ 
+@@ -175,6 +202,8 @@
+     lv_display_t * disp = lv_display_create(disp_w, disp_h);
+     if(disp == NULL) {
+         LV_LOG_ERROR("lv_display_create failed");
++        free(data);
++        k230_release_owned_display();
+         return NULL;
+     }
+ 
+@@ -203,9 +232,9 @@
+     lv_display_set_flush_wait_cb(disp, drm_k230_flush_wait);
+     lv_display_set_user_data(disp, data);
+ 
+-    LV_LOG_INFO("K230 OSD display initialized: physical %ux%u, display %ux%u, rotation=%d fourcc=0x%x",
++    LV_LOG_INFO("K230 OSD display initialized: physical %ux%u, display %ux%u, rotation=%d fourcc=0x%x standalone=%d",
+                 k230_display->width, k230_display->height, disp_w, disp_h,
+-                k230_display->drm_rotation, fourcc);
++                k230_display->drm_rotation, fourcc, k230_display_owned ? 1 : 0);
+ 
+     return disp;
+ }
+@@ -225,7 +254,6 @@
+ static void drm_k230_flush(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map)
+ {
+     LV_UNUSED(area);
+-    (void)k230_dispaly_v4l2_drm_run_flag;
+     if(!lv_display_flush_is_last(disp)) return;
+ 
+     drm_k230_data_t * data = lv_display_get_user_data(disp);
+@@ -250,9 +278,15 @@
+     /* Flush CPU dcache so DRM DMA reads the rendered pixels */
+     thead_csi_dcache_clean_invalid_range(buf->map, buf->size);
+ 
+-    /* Hand the buffer to the v4l2-drm thread — it will commit it on vsync */
+-    k230_display->lvgl_disp_buffer = buf;
+-    flush_data_fram_count = k230_display->frame_count;
++    if(k230_use_v4l2_thread()) {
++        /* Hand the buffer to the v4l2-drm thread — it will commit it on vsync */
++        k230_display->lvgl_disp_buffer = buf;
++        flush_data_fram_count = k230_display->frame_count;
++    }
++    else if(display_commit_buffer_noblock(buf, 0, 0) < 0) {
++        LV_LOG_ERROR("display_commit_buffer_noblock failed for fb_id=%u",
++                     buf->id);
++    }
+ 
+     lv_display_flush_ready(disp);
+ }
+@@ -267,7 +301,7 @@
+ static void drm_k230_flush_wait(lv_display_t * disp)
+ {
+     LV_UNUSED(disp);
+-    if(k230_display == NULL) return;
++    if(k230_display == NULL || !k230_use_v4l2_thread()) return;
+ 
+     while(k230_display->lvgl_disp_buffer && (k230_display->frame_count <= flush_data_fram_count)){
+         usleep(15000);
+@@ -294,9 +328,9 @@
+ 
+     k230_dispaly_v4l2_drm_run_flag = v4l2_drm_run_flag;
+ 
++    k230_release_owned_display();
+     k230_display = (struct display *)d;
+-
+-
++    k230_display_owned = false;
+ 
+     /* Register all backends */
+     driver_backends_register();
+@@ -311,10 +345,15 @@
+         /* Initialize display backend (DRM_V4L2_K230 is the default/first) */
+         ret = driver_backends_init_backend("DRM_V4L2_K230");
+     }else {
+-        printf("use linux default drm \n");
+-        ret = driver_backends_init_backend("DRM");
++        printf("use standalone DRM_V4L2_K230 \n");
++        ret = driver_backends_init_backend("DRM_V4L2_K230");
++        if(ret == -1) {
++            printf("fallback to linux default drm \n");
++            ret = driver_backends_init_backend("DRM");
++        }
+     }
+     if(ret == -1) {
++        k230_release_owned_display();
+         fprintf(stderr, "LVGL display init failed\n");
+         return -1;
+     }

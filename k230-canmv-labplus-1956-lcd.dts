@@ -1,0 +1,182 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+/*
+ * Copyright (C) 2024 Yangyu Chen <cyy@cyyself.name>
+ */
+
+#include "k230.dtsi"
+#include "display-st7701-480x800.dtsi"
+#include <dt-bindings/input/input.h>
+
+/
+{
+	model = "Canaan CanMV-K230";
+	compatible = "canaan,canmv-k230", "canaan,kendryte-k230","k230_canmv_01studio";
+
+	aliases {
+		serial3 = &uart3;
+		i2c3 = &i2c3;
+		i2c4 = &i2c4;
+		mmc0 = &mmc_sd0;
+		mmc1 = &mmc_sd1;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+
+	ddr: memory@0 {
+		device_type = "memory";
+		reg = <0x0 0x0 0x0 0x40000000>;
+	};
+
+	sound {
+		status                      = "okay";
+		compatible                  = "canaan,k230-audio-inno";
+		canaan,model                = "K230_I2S_INNO";
+		canaan,k230-i2s-controller  = <&i2s>;
+		canaan,k230-audio-codec     = <&inno_codec>;
+	};
+
+};
+
+&uart0 {
+	status = "okay";
+};
+&uart1 {
+	status = "okay";
+};
+&uart3 {
+	status = "okay";
+};
+&mmc_sd0{
+	status = "okay";
+	no-1-8-v;
+	cap-sd-highspeed;
+	rx_delay_line = <0x0d>;
+	tx_delay_line = <0xb0>;
+	clocks = <&sd0_cclk_gate>,<&sd0_cclk_gate>;
+	clock-names = "core", "bus";
+};
+&mmc_sd1{
+	status = "okay";
+	no-1-8-v;
+	cap-sd-highspeed;
+	mshc_ctrl_r = <0x00>;
+};
+&usb0 {
+	status = "okay";
+};
+&usb1 {
+	dr_mode = "host";
+	status = "okay";
+};
+
+
+&i2c4
+{
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c4_pins>;
+};
+
+
+
+&vo {
+	vth_line = <10>;
+};
+/* CSI2 -> logical slot0 */
+&mipi0 {
+	/* CSI2 -> logical slot0 */
+	id = <2>;
+	reg = <0x0 0x9000a800 0x0 0x800>;
+	interrupts = <121 IRQ_TYPE_LEVEL_HIGH>;
+	resets = <&sysctl_reset K230_RESET_CSI2_REG_OFFSET K230_RESET_CSI2_TYPE
+			  K230_RESET_CSI2_DONE_BIT K230_RESET_CSI2_ASSERT_BIT>,
+		 <&sysctl_reset K230_RESET_M2_REG_OFFSET K230_RESET_M2_TYPE
+			  K230_RESET_M2_DONE_BIT K230_RESET_M2_ASSERT_BIT>;
+	reset-gpios = <&gpio0_ports 14 GPIO_ACTIVE_HIGH>; /* CSI2 reset, GPIO14 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&cam2_mclk_pins &cam2_rst_pins>;
+	status = "okay";
+};
+
+&v4l2isp {
+	dev0-sensor-name = "bf3238";
+	dev0-sensor-mode = <0>;
+	dev0-sensor-i2c-bus = <4>; /* CSI2 */
+	dev0-sensor-mclk-id = <0>; /* MCLK1 / GPIO13 */
+	dev0-sensor-use-chip-clk = <1>;
+};
+
+&i2c3
+{
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&i2c3_pins>;
+
+	touchscreen@2e
+	{
+		compatible = "chipsemi,chsc5432", "chipsemi,chsc_cap_touch";
+		reg = <0x2e>;
+		reset-gpios = <&gpio0_ports 24 GPIO_ACTIVE_LOW>;
+		interrupt-parent = <&gpio0_ports>;
+		interrupts = <23 IRQ_TYPE_EDGE_FALLING>;
+		touchscreen-size-x = <480>;
+		touchscreen-size-y = <800>;
+	};
+};
+
+&lcd
+{
+	dsi_reset-gpios = <&gpio0_ports 22 GPIO_ACTIVE_HIGH>;
+	backlight_gpio-gpios = <&gpio0_ports 25 GPIO_ACTIVE_HIGH>;
+};
+
+&iomux {
+	pwm2_pins: pwm2_pins {
+        pins = K230_IO46; //io46
+        function = K230_IO46_PWM2;  // alt2
+    };
+	pwm3_pins: pwm3_pins {
+		pins = K230_IO47; //io47
+		function = K230_IO47_PWM3;
+	};
+	cam2_mclk_pins: cam2_mclk_pins {
+		pins = K230_IO13;
+		function = K230_IO13_M_CLK1;
+	};
+	cam2_rst_pins: cam2_rst_pins {
+		pins = K230_IO14;
+		function = K230_IO14_GPIO14;
+	};
+	i2c4_pins: i2c4_pins {
+		pins = K230_IO7, K230_IO8;
+		function = "alt2";
+		bias-pull-up;
+	};
+	i2c3_pins: i2c3_pins {
+		pins = K230_IO44, K230_IO45;
+		function = "alt2";
+		bias-pull-up;
+	};
+	i2c2_pins: i2c2_pins {
+        pins = K230_IO11,K230_IO12;
+        function = "alt3";
+		bias-pull-up;
+    };
+};
+&pwm0_2{
+	status = "okay";
+	pinctrl-names = "default";
+    pinctrl-0 = <&pwm2_pins>;
+};
+&pwm3_5{
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pwm3_pins>;
+};
+&i2c2{
+	status = "okay";
+	pinctrl-names = "default";
+    pinctrl-0 = <&i2c2_pins>;
+};
