@@ -4,26 +4,12 @@ Date: Thu, 27 Aug 2026 12:00:00 +0800
 Subject: [PATCH] input: touchscreen: add ChipSemi CHSC5xxx support
 
 ---
- arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts |   2 +-
  drivers/input/touchscreen/Kconfig                           |  11 ++
  drivers/input/touchscreen/Makefile                          |   1 +
  drivers/input/touchscreen/chct_touch.c                      | 327 +++++++++++++++++++++++++++++
- 4 files changed, 340 insertions(+), 1 deletion(-)
+ 3 files changed, 339 insertions(+)
  create mode 100644 drivers/input/touchscreen/chct_touch.c
 
-diff --git a/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts b/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
-index 6b82fd7e1..58f4d0f7d 100644
---- a/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
-+++ b/arch/riscv/boot/dts/canaan/k230-canmv-labplus-1956-lcd.dts
-@@ -116,7 +116,7 @@
- 
- 	touchscreen@2e
- 	{
--		compatible = "edt,edt-ft5306";
-+		compatible = "chipsemi,chsc5432", "chipsemi,chsc_cap_touch";
- 		reg = <0x2e>;
- 		reset-gpios = <&gpio0_ports 24 GPIO_ACTIVE_LOW>;
- 		interrupt-parent = <&gpio0_ports>;
 diff --git a/drivers/input/touchscreen/Kconfig b/drivers/input/touchscreen/Kconfig
 index 2db36e21a..34d74d0b4 100644
 --- a/drivers/input/touchscreen/Kconfig
