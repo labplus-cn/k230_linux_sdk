@@ -94,7 +94,7 @@
 			  K230_RESET_CSI2_DONE_BIT K230_RESET_CSI2_ASSERT_BIT>,
 		 <&sysctl_reset K230_RESET_M2_REG_OFFSET K230_RESET_M2_TYPE
 			  K230_RESET_M2_DONE_BIT K230_RESET_M2_ASSERT_BIT>;
-	reset-gpios = <&gpio0_ports 14 GPIO_ACTIVE_HIGH>; /* CSI2 reset, GPIO14 */
+	reset-gpios = <&gpio0_ports 14 GPIO_ACTIVE_LOW>; /* CSI2 reset, GPIO14, active low */
 	pinctrl-names = "default";
 	pinctrl-0 = <&cam2_mclk_pins &cam2_rst_pins>;
 	status = "okay";
